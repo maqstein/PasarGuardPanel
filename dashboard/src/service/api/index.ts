@@ -577,6 +577,37 @@ export interface AdminsSimpleResponse {
   total: number;
 }
 
+/**
+ * AmneziaWG properties for the host.
+ */
+export interface AmneziaProperties {
+  jc?: number | null;
+  jmin?: number | null;
+  jmax?: number | null;
+  s1?: number | null;
+  s2?: number | null;
+  s3?: number | null;
+  s4?: number | null;
+  h1?: string | null;
+  h2?: string | null;
+  h3?: string | null;
+  h4?: string | null;
+  i1?: string | null;
+  i2?: string | null;
+  i3?: string | null;
+  i4?: string | null;
+  i5?: string | null;
+  header_protection_key?: string | null;
+  content_padding_addition?: string | null;
+  rekey_after_time?: number | string | null;
+  rekey_timeout?: number | string | null;
+  reject_after_time?: number | string | null;
+  keepalive_timeout?: number | string | null;
+  max_handshake_attempts?: number | string | null;
+  random_trailers?: string | null;
+  disable_cookies?: string | null;
+}
+
 export type Language = typeof Language[keyof typeof Language];
 
 
@@ -1198,6 +1229,7 @@ export interface BaseHost {
   subscription_templates?: SubscriptionTemplates | null;
   final_mask_settings?: FinalMask | null;
   cipher_suites?: string | null;
+  wireguard_amnezia?: AmneziaProperties | null;
 }
 
 export interface BaseNotificationEnable {
@@ -1573,6 +1605,7 @@ export interface CreateHost {
   subscription_templates?: SubscriptionTemplates | null;
   final_mask_settings?: FinalMask | null;
   cipher_suites?: string | null;
+  wireguard_amnezia?: AmneziaProperties | null;
 }
 
 export interface CreateUserFromTemplate {

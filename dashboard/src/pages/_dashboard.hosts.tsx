@@ -108,6 +108,10 @@ export default function HostsPage() {
         verify_peer_cert_by_name: formData.verify_peer_cert_by_name && formData.verify_peer_cert_by_name.length > 0 ? formData.verify_peer_cert_by_name : undefined,
         vless_route: formData.vless_route || undefined,
         transport_settings: mapHostTransportSettingsForApi(formData.transport_settings),
+        // The form uses '' for cleared AmneziaWG number inputs; the API expects them omitted.
+        wireguard_amnezia: formData.wireguard_amnezia
+          ? (Object.fromEntries(Object.entries(formData.wireguard_amnezia).filter(([, value]) => value !== '')) as CreateHost['wireguard_amnezia'])
+          : undefined,
         mux_settings: allProtocolsNone
           ? undefined
           : formData.mux_settings

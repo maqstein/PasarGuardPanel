@@ -337,6 +337,7 @@ class SubscriptionInboundData(BaseModel):
     noise_settings: dict[str, Any] | None = Field(None)
     finalmask: dict[str, Any] | None = Field(None)
     finalmask_link: str | None = Field(None)
+    wireguard_amnezia: dict[str, Any] | None = Field(None)
 
     # Priority and status
     priority: int = Field(0)
