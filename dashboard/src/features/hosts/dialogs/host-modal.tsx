@@ -706,6 +706,12 @@ const HostModal: React.FC<HostModalProps> = ({ isDialogOpen, onOpenChange, onSub
             {isWireGuardInbound && (
               <TabsContent dir={dir} value="amneziawg">
                 <div className="space-y-6">
+                  <p className="text-muted-foreground text-xs">
+                    {t('hostsDialog.amneziawg.coreHint', {
+                      defaultValue:
+                        "Empty fields take the AmneziaWG values from the core config. A value set here overrides the core's; S1–S4, H1–H4 and the header protection key must match the core, or clients cannot connect.",
+                    })}
+                  </p>
                   {/* Action Generator Buttons */}
                   <div className="flex flex-wrap gap-2 pt-1 pb-3">
                     <Button type="button" variant="outline" size="sm" onClick={setWgAmneziaDefaults}>

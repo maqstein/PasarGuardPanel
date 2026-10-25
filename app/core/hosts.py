@@ -138,8 +138,9 @@ async def _prepare_subscription_inbound_data(
     absent or empty host DNS settings fall back to inbound DNS; entries are
     stripped and blank entries removed. Explicit host HTTP headers, including
     an empty mapping, override inbound headers for MASQUE and xHTTP.
-    WireGuard hosts carry non-null AmneziaWG properties into the returned
-    inbound data for link and configuration generation.
+    WireGuard hosts carry the core's AmneziaWG settings into the returned inbound
+    data for link and configuration generation, with non-null host AmneziaWG
+    properties overriding them.
 
     Raises:
         TypeError: The host's inbound tag does not resolve in the core manager.
@@ -189,6 +190,15 @@ async def _prepare_subscription_inbound_data(
 
         dns = list(wg_over.dns) if wg_over.dns else None
 
+        # AmneziaWG values come from the core config; values set on the host override them
+        amnezia = None
+        core_amnezia = inbound_config.get("amnezia")
+        if core_amnezia is not None or host.wireguard_amnezia:
+            amnezia = dict(core_amnezia or {})
+            if host.wireguard_amnezia:
+                amnezia.update(host.wireguard_amnezia.model_dump(exclude_none=True))
+            amnezia = amnezia or None
+
         return SubscriptionInboundData(
             remark=host.remark,
             inbound_tag=host.inbound_tag,
@@ -211,7 +221,7 @@ async def _prepare_subscription_inbound_data(
             noise_settings=host.noise_settings.model_dump() if host.noise_settings else None,
             finalmask=final_mask_settings,
             finalmask_link=finalmask_link,
-            wireguard_amnezia=host.wireguard_amnezia.model_dump(exclude_none=True) if host.wireguard_amnezia else None,
+            wireguard_amnezia=amnezia,
             priority=host.priority,
             status=list(host.status) if host.status else None,
             subscription_templates=host.subscription_templates.model_dump(exclude_none=True)

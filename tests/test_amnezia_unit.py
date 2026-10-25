@@ -2,6 +2,8 @@ import base64
 import io
 import zipfile
 
+import pytest
+
 from app.models.host import AmneziaProperties
 from app.models.subscription import SubscriptionInboundData, TCPTransportConfig, TLSConfig
 from app.subscription.singbox import SingBoxConfiguration
@@ -327,3 +329,118 @@ def test_wireguard_toggles_controlled_and_serialized():
     assert built["payload"]["disable_cookies"] == "off"
     assert "random_trailers=on" in built["uri"]
     assert "disable_cookies=off" in built["uri"]
+
+
+HP_KEY = base64.b64encode(bytes([0x6B]) * 32).decode()
+WG_PRIVATE_KEY = base64.b64encode(bytes(range(32))).decode()
+
+
+def _awg_core(amnezia) -> dict:
+    return {
+        "interface_name": "awg0",
+        "private_key": WG_PRIVATE_KEY,
+        "listen_port": 51821,
+        "address": ["10.8.0.1/24"],
+        "amnezia": amnezia,
+    }
+
+
+def test_wireguard_core_exposes_amnezia_to_hosts():
+    from app.core.wireguard import WireGuardConfig
+
+    config = WireGuardConfig(
+        _awg_core(
+            {
+                "jc": 4,
+                "s1": 15,
+                "s2": 16,
+                "s3": 17,
+                "s4": 18,
+                "h1": 100000,
+                "h2": "200000-200100",
+                "header_protection_key": HP_KEY,
+                "content_padding_addition": 16,
+                "rekey_timeout": "5",
+                "random_trailers": True,
+                "disable_cookies": "false",
+                "not_an_awg_key": 1,
+            }
+        )
+    )
+
+    assert config.inbounds_by_tag["awg0"]["amnezia"] == {
+        "jc": 4,
+        "s1": 15,
+        "s2": 16,
+        "s3": 17,
+        "s4": 18,
+        "h1": "100000",
+        "h2": "200000-200100",
+        "header_protection_key": HP_KEY,
+        "content_padding_addition": "16",
+        "rekey_timeout": 5,
+        "random_trailers": "on",
+        "disable_cookies": "off",
+    }
+    # The node gets the block as written
+    assert config["amnezia"]["random_trailers"] is True
+
+
+def test_wireguard_core_without_amnezia_has_no_host_values():
+    from app.core.wireguard import WireGuardConfig
+
+    core = _awg_core({})
+    del core["amnezia"]
+    assert "amnezia" not in WireGuardConfig(core).inbounds_by_tag["awg0"]
+    assert WireGuardConfig(_awg_core({})).inbounds_by_tag["awg0"]["amnezia"] == {}
+
+
+def test_wireguard_core_rejects_invalid_amnezia():
+    from app.core.wireguard import WireGuardConfig
+
+    with pytest.raises(TypeError):
+        WireGuardConfig(_awg_core("on"))
+    with pytest.raises(ValueError, match="amnezia"):
+        WireGuardConfig(_awg_core({"header_protection_key": HP_KEY, "s1": 4}))
+    with pytest.raises(ValueError, match="amnezia"):
+        WireGuardConfig(_awg_core({"random_trailers": "maybe"}))
+
+
+async def _prepare_wireguard_host(monkeypatch, core_amnezia, host_amnezia=None) -> SubscriptionInboundData:
+    from unittest.mock import AsyncMock
+
+    from app.core.hosts import _prepare_subscription_inbound_data
+    from app.models.host import BaseHost
+
+    inbound_config = {
+        "protocol": "wireguard",
+        "network": "udp",
+        "listen_port": 51821,
+        "public_key": "pub",
+        "pre_shared_key": "",
+    }
+    if core_amnezia is not None:
+        inbound_config["amnezia"] = core_amnezia
+    monkeypatch.setattr("app.core.hosts.core_manager.get_inbound_by_tag", AsyncMock(return_value=inbound_config))
+    host = BaseHost(
+        remark="awg", address={"vpn.example.com"}, inbound_tag="awg0", priority=0, wireguard_amnezia=host_amnezia
+    )
+    return await _prepare_subscription_inbound_data(host)
+
+
+async def test_host_takes_amnezia_from_core(monkeypatch):
+    core = {"jc": 4, "s1": 15, "h1": "100000", "header_protection_key": HP_KEY}
+
+    inbound = await _prepare_wireguard_host(monkeypatch, core)
+    assert inbound.wireguard_amnezia == core
+
+    # Host values override the core's, and the rest still come from the core
+    inbound = await _prepare_wireguard_host(monkeypatch, core, {"jc": 8, "jmin": 40, "jmax": 70})
+    assert inbound.wireguard_amnezia == {**core, "jc": 8, "jmin": 40, "jmax": 70}
+
+
+async def test_host_amnezia_without_core_amnezia(monkeypatch):
+    assert (await _prepare_wireguard_host(monkeypatch, None)).wireguard_amnezia is None
+    assert (await _prepare_wireguard_host(monkeypatch, {})).wireguard_amnezia is None
+    inbound = await _prepare_wireguard_host(monkeypatch, None, {"jc": 4})
+    assert inbound.wireguard_amnezia == {"jc": 4}

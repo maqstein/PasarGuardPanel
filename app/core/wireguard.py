@@ -14,6 +14,39 @@ from app.utils.crypto import get_wireguard_public_key, validate_wireguard_key
 
 _WIREGUARD_PROTOCOLS = frozenset((ProxyProtocol.wireguard,))
 _WIREGUARD_INTERFACE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_AMNEZIA_STRING_KEYS = ("h1", "h2", "h3", "h4", "content_padding_addition")
+_AMNEZIA_SWITCH_KEYS = ("random_trailers", "disable_cookies")
+_AMNEZIA_SWITCH_VALUES = {"on": "on", "true": "on", "1": "on", "off": "off", "false": "off", "0": "off"}
+
+
+def amnezia_host_properties(amnezia: dict) -> dict:
+    """Convert a core's ``amnezia`` block to host AmneziaWG properties.
+
+    The node accepts numbers or strings for headers and padding and booleans for the
+    switches; hosts keep headers and padding as strings and switches as "on"/"off".
+    Unknown keys are dropped.
+
+    Raises:
+        ValueError: The block holds a value the host properties reject.
+    """
+    from app.models.host import AmneziaProperties
+
+    values = dict(amnezia)
+    for key in _AMNEZIA_STRING_KEYS:
+        value = values.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            values[key] = str(value)
+    for key in _AMNEZIA_SWITCH_KEYS:
+        value = values.get(key)
+        if isinstance(value, bool):
+            values[key] = "on" if value else "off"
+        elif isinstance(value, str):
+            values[key] = _AMNEZIA_SWITCH_VALUES.get(value.strip().lower(), value)
+    known = {key: value for key, value in values.items() if key in AmneziaProperties.model_fields}
+    try:
+        return AmneziaProperties.model_validate(known).model_dump(exclude_none=True)
+    except ValueError as e:
+        raise ValueError(f"amnezia: {e}") from e
 
 
 class WireGuardConfig(dict):
@@ -96,6 +129,12 @@ class WireGuardConfig(dict):
             normalized_addresses.append(str(ip_interface(cidr.strip())))
         self["address"] = normalized_addresses
 
+        if "amnezia" in self:
+            amnezia = self["amnezia"]
+            if not isinstance(amnezia, dict):
+                raise TypeError("amnezia must be an object")
+            amnezia_host_properties(amnezia)
+
     def _resolve_inbounds(self):
         interface_name = self["interface_name"]
         metadata = {
@@ -110,6 +149,11 @@ class WireGuardConfig(dict):
             "private_key": self.get("private_key", ""),
             "pre_shared_key": self.get("pre_shared_key", ""),
         }
+        if isinstance(self.get("amnezia"), dict):
+            # Hosts take the client copy of the AmneziaWG settings from here, so the values
+            # the client must share with the server (S1–S4, H1–H4, the header protection key)
+            # always match the node.
+            metadata["amnezia"] = amnezia_host_properties(self["amnezia"])
         self._inbounds = [interface_name]
         self._inbounds_by_tag = {interface_name: metadata}
 
